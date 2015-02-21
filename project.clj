@@ -1,6 +1,6 @@
-(defproject daisy "0.1.0-SNAPSHOT"
+(defproject ca.grammati/daisy "0.1.0"
   
-  :description "Clojure components, enhanced."
+  :description "Clojure component helpers."
   :url "http://github.com/grammati/daisy"
   :license "MIT License"
   

@@ -52,12 +52,45 @@
 
 
 
-(defcomponent TheFullMonty
-  "Component that shows off all the features of defcomponent."
-  {:init-args [a]
-   :injected  [b]
-   :creates   [c]}
+(defprotocol Foo
+  (foo [this]))
+
+(defcomponent MyApp
+  "Component that uses all the features of defcomponent."
+  {:init-args    [a]
+   :injected     [b x]
+   :creates      [c]
+   :factory-name new-cool-app}
   (start [this]
-         (assoc this :c (+ a b)))
+    (assoc this :c (str a b)))
   (stop [this]
-        (assoc this :c nil)))
+    (assoc this :c nil))
+  Foo
+  (foo [this] (str a b c))
+
+  Object
+  (toString [this] "MyApp"))
+
+(defcomponent Db
+  "Database component"
+  {:init-args [conn-str]
+   :creates   [conn]}
+  (start [this]
+    (assoc this :conn {:fake-conn conn-str}))
+  (stop [this]
+    (assoc this :conn nil)))
+
+(defcomponent Thing
+  "Some thing"
+  {:injected [b]}
+  (start [this] this)
+  (stop [this] this))
+
+(deftest test-app
+  (let [s-map (component/map->SystemMap
+               {:app (new-cool-app "aaa")
+                :b   (new-db "jdbc://blah")
+                :x   (new-thing)})
+        sys   (component/start s-map)]
+    (is sys)
+    (component/stop sys)))
