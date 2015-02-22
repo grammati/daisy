@@ -3,9 +3,13 @@
 A library to make clojure
 [Components](https://github.com/stuartsierra/component) easier to use.
 
+## Usage
+
+FIXME
+
 ## Rationale
 
-The component library is a large stop forward in the organization of
+The component library is a large step forward in the organization of
 clojure libraries, but it is not perfect.
 
 Here are the usability problems I have found with it.

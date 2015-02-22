@@ -119,6 +119,18 @@
   `start` and `stop` - method bodies for the lifecycle start and stop methods.
   `body` - anything here will be added to the body of the defrecord. You can use
            this to implement other protocols.
+
+  Example:
+
+  (defcomponent Foo
+    \"This is a sweet component\"
+    {:init-args [blah]
+     :injected  [bar]
+     :creates   [foo]}
+    (start [this] (assoc this :foo (flarp blah bar)))
+    (stop  [this] (unflarp! foo) (assoc this :foo nil))
+    IFunky
+    (funky [this] (funkify foo bar blah)))
   "
   [type-name doc {:keys [init-args injected creates factory-name]} start stop & body]
   {:pre [(symbol? type-name)
@@ -138,6 +150,9 @@
   (let [shallow-map
         (fn [c]
           (into {} (for [[k v] c]
-                     [k (if (satisfies? component/Lifecycle v) (str "component:" v) v)])))]
+                     [k (if (and (record? v)
+                                 (satisfies? component/Lifecycle v))
+                          (str "component:" v)
+                          v)])))]
     (clojure.pprint/pprint (into {} (for [[k v] s] [k (shallow-map v)])))))
 

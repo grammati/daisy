@@ -1,4 +1,4 @@
-(defproject ca.grammati/daisy "0.1.0"
+(defproject ca.grammati/daisy "0.1.1"
   
   :description "Clojure component helpers."
   :url "http://github.com/grammati/daisy"
