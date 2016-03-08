@@ -1,4 +1,4 @@
-(ns duke.daisy
+(ns ca.grammati.daisy
   "Helpers for com.stuartsierra/component.
 
   Provides tools that help to eliminate some of the boilerplate
@@ -13,7 +13,8 @@
    - Also provides a function to pretty-print a system map."
   (:require [com.stuartsierra.component :as component]
             [clojure.pprint]
-            [clojure.string :as string]))
+            [clojure.string :as string])
+  (:import [com.stuartsierra.component SystemMap]))
 
 
 (defprotocol Lifecycle
@@ -22,17 +23,6 @@
 
 (defprotocol Documented
   (-doc [this]))
-
-
-;;; Default implementations
-(extend-protocol Lifecycle
-  Object
-  (-start [this] (component/start this))
-  (-stop  [this] (component/stop this)))
-
-(extend-protocol Documented
-  Object
-  (-doc [_]))
 
 
 (def ^:dynamic *print-lifecycle?* true)
@@ -47,11 +37,16 @@
   [c]
   (::started? c))
 
+(defn system?
+  "Returns true if the component is a SystemMap"
+  [c]
+  (instance? SystemMap c))
+
 (defn start
   "Starts the component only if it is not already started.
   Prints what it's doing if *print-lifecycle?* is true."
   [c]
-  (if (started? c)
+  (if (and (started? c) (not (system? c)))
     (do
       (plc "Skipping (already started): " c)
       c)
@@ -63,13 +58,27 @@
   "Stops the component only if it is started.
   Prints what it's doing if *print-lifecycle?* is true."
   [c]
-  (if (started? c)
+  (if (or (started? c) (system? c))
     (do
       (plc "Stopping: " c " ... ")
       (assoc (-stop c) ::started? nil))
     (do
       (plc "Skipping (already stopped): " c)
       c)))
+
+
+;;; Default implementations
+(extend-protocol Lifecycle
+  clojure.lang.Associative
+  (-start [this] (-> this component/start (assoc ::started? true)))
+  (-stop  [this] (-> this component/stop (assoc ::started? nil)))
+  Object
+  (-start [this] (component/start this))
+  (-stop  [this] (component/stop this)))
+
+(extend-protocol Documented
+  Object
+  (-doc [_]))
 
 
 (defn- camel->lisp [s]
@@ -96,8 +105,22 @@
       (let [c# (~(symbol (str "map->" type-name)) ~args-map)]
         (component/using c# ~(mapv keyword injected))))))
 
+(defprotocol ComponentDependsOn
+  (-depends-on [this] "Returns a vector of keywords describing the other components that the given componenet depends on."))
 
-(defmacro defcomponent
+(extend-protocol ComponentDependsOn
+  Object
+  (-depends-on [this] nil))
+
+(defn- component-meta
+  [type-name injected]
+  `(extend-protocol ComponentDependsOn
+     ~type-name
+     (-depends-on [_#] ~(mapv keyword injected))))
+
+(defmacro
+  ^{:style/indent [1 :form :form [1]]}
+  defcomponent
   "Macro to define a component.
 
   Expands into a defrecord and a factory function.
@@ -142,11 +165,106 @@
     (list
      'do
      (component-record type-name doc fields start stop body)
-     (component-factory type-name fn-name doc init-args injected))))
+     (component-factory type-name fn-name doc init-args injected)
+     (component-meta type-name injected))))
+
+(defn dependency-map [m]
+  (into {} (for [[k c] m
+                 :let [deps (-depends-on c)]
+                 :when (seq deps)]
+             [k deps])))
+
+(defn system-map
+  "Builds and returns a system-map containing dependency information
+  extracted from the components in the given map.
+
+ `defcomponent` expects you to declare, using the `:injected` option,
+  a list of things that a component depends on. We can use this
+  information to automatically generate the dependency map that is the
+  second argument to component's `system-using` function.
+
+  Note that this only works if you follow certain conventions: the
+  sybol given in `:injected` must match the keyword used as the key in
+  the system-map passed to this function.
+
+  Example:
+  ;; Given:
+  (defcomponent Foo
+    \"docstring\"
+    {:injected [bar]}
+    (start [this] ...)
+    (stop [this] ...))
+  (defcomponent Bar ...)
+
+  ;; then:
+  (daisy/system-map {:bar (new-bar) :foo (new-foo)})
+  ;; is equvalent to:
+  (component/system-using
+    (component/map->System {:bar (new-bar) :foo (new-foo)})
+    {:foo [:bar]})
+  "
+  [m]
+  (component/system-using
+    (component/map->SystemMap m)
+    (dependency-map m)))
 
 
+(defn- lifecycle-fn-wrapper [lifecycle-fn f]
+  (fn [system-map]
+    (let [[system error] (try
+                           [(lifecycle-fn system-map) nil]
+                           (catch clojure.lang.ExceptionInfo e
+                             [(-> e ex-data :system) e]))]
+      (f system)
+      (when error
+        (throw error)))))
 
-(defn pprint-system [s]
+(defn starter
+  "Returns a function that will attempt to start a system, and will
+  call the given callback, passing the resulting system, whether the
+  start succeeds or not.
+
+  If startup fails with an exception, it will be re-thrown after
+  calling the callback."
+  [f]
+  (lifecycle-fn-wrapper start f))
+
+(defn stopper
+  "Returns a function that will attempt to stop a system, and will
+  call the given callback, passing the resulting system, wether or not
+  the stop succeeds.
+
+  If stopping fails with an exception, it will be re-thrown after
+  calling the callback."
+  [f]
+  (lifecycle-fn-wrapper stop f))
+
+(defn start-to-var
+  "Attempts to start a system, and puts the resulting system, whether
+  fully started or not, into the given var via `alter-var-root`.
+
+  The key value here is that if starting fails with an exception, the
+  partially-started system map will still be stored in the var, before
+  re-thowing."
+  [v system-map]
+  ((starter #(alter-var-root v (constantly %))) system-map))
+
+(defn stop-var
+  "Attempts to stop the system stored in the given var, and puts the
+  resulting system, whether fully stopped or not, into the var via
+  `alter-var-root`.
+
+  The key value here is that if stopping fails with an exception, the
+  partially-stopped system map will still be stored in the var, before
+  re-thowing."
+  [v]
+  (when-let [system-map @v]
+    ((stopper #(alter-var-root v (constantly %))) system-map)))
+
+
+(defn pprint-system
+  "Pretty-print a system-map in a way that won't make your face melt."
+  [s]
   (let [shallow-map
         (fn [c]
           (into {} (for [[k v] c]
