@@ -5,7 +5,7 @@
   involved in developing component-based systems.
 
   `defcomponent` : macro for defining component-record types
-  
+
    - Prints start/stop messages
    - Keeps track of component state, and will not start an
      already-started component.
@@ -61,7 +61,7 @@
   (if (or (started? c) (system? c))
     (do
       (plc "Stopping: " c " ... ")
-      (assoc (-stop c) ::started? nil))
+      (assoc (-stop c) ::started? false))
     (do
       (plc "Skipping (already stopped): " c)
       c)))
@@ -69,12 +69,9 @@
 
 ;;; Default implementations
 (extend-protocol Lifecycle
-  clojure.lang.Associative
+  SystemMap
   (-start [this] (-> this component/start (assoc ::started? true)))
-  (-stop  [this] (-> this component/stop (assoc ::started? nil)))
-  Object
-  (-start [this] (component/start this))
-  (-stop  [this] (component/stop this)))
+  (-stop  [this] (-> this component/stop (assoc ::started? false))))
 
 (extend-protocol Documented
   Object
@@ -273,4 +270,3 @@
                           (str "component:" v)
                           v)])))]
     (clojure.pprint/pprint (into {} (for [[k v] s] [k (shallow-map v)])))))
-

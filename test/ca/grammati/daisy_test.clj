@@ -14,14 +14,14 @@
 (deftest test-basics
   (testing "defcomponent defines factory function"
     (is (new-dead-simple)))
-  
+
   (let [c (new-dead-simple)]
     (testing "factory function returns a component"
       (is (satisfies? component/Lifecycle c))
       (is (satisfies? daisy/Lifecycle c)))
     (testing "component type has docstring attached (available via protocol)"
       (is (= "This is" (subs (daisy/-doc c) 0 7)))))
-  
+
   (testing "factory fn has docstring"
     (is (= "Factory" (subs (-> #'new-dead-simple meta :doc) 0 7))))
 
@@ -33,7 +33,7 @@
 
       (testing "start does not re-start"
         (is (identical? c2 (daisy/start c2))))
-      
+
       (testing "component can be stopped"
         (let [c3 (daisy/stop c2)]
           (is (not (daisy/started? c3))))))))
@@ -169,4 +169,12 @@
       (daisy/stop-var #'test-system)
       (doseq [c [test-system (:app test-system) (:b test-system) (:zzz test-system)]]
         (prn c)
-        (is (not (daisy/started? c)))))))
+        (is (not (daisy/started? c))))))
+
+  (testing "restart"
+    (-> {:app (new-thing)
+         :b   (new-dead-simple)}
+        daisy/system-map
+        daisy/start
+        daisy/stop
+        daisy/start)))
