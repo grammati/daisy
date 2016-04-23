@@ -264,9 +264,11 @@
   [s]
   (let [shallow-map
         (fn [c]
-          (into {} (for [[k v] c]
-                     [k (if (and (record? v)
-                                 (satisfies? component/Lifecycle v))
-                          (str "component:" v)
-                          v)])))]
+          (if (record? c)
+            (into {} (for [[k v] c]
+                       [k (if (and (record? v)
+                                   (satisfies? component/Lifecycle v))
+                            (str "component:" v)
+                            v)]))
+            c))]
     (clojure.pprint/pprint (into {} (for [[k v] s] [k (shallow-map v)])))))
